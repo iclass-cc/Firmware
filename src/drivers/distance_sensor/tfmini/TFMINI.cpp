@@ -62,7 +62,7 @@ TFMINI::init()
 	case 1: // TFMINI (12m, 100 Hz)
 		_px4_rangefinder.set_min_distance(0.3f);
 		_px4_rangefinder.set_max_distance(12.0f);
-		_px4_rangefinder.set_fov(math::radians(1.15));
+		_px4_rangefinder.set_fov(math::radians(1.15f));
 
 		break;
 
@@ -174,6 +174,8 @@ TFMINI::collect()
 	// parse entire buffer
 	const hrt_abstime timestamp_sample = hrt_absolute_time();
 
+	int ret_parse = PX4_ERROR;
+
 	do {
 		// read from the sensor (uart buffer)
 		ret = ::read(_fd, &readbuf[0], readlen);
@@ -198,7 +200,7 @@ TFMINI::collect()
 
 		// parse buffer
 		for (int i = 0; i < ret; i++) {
-			tfmini_parse(readbuf[i], _linebuf, &_linebuf_index, &_parse_state, &distance_m);
+			ret_parse = tfmini_parse(readbuf[i], _linebuf, &_linebuf_index, &_parse_state, &distance_m);
 		}
 
 		// bytes left to parse
@@ -213,7 +215,9 @@ TFMINI::collect()
 	}
 
 	// publish most recent valid measurement from buffer
-	_px4_rangefinder.update(timestamp_sample, distance_m);
+	if (ret_parse == PX4_OK) {
+		_px4_rangefinder.update(timestamp_sample, distance_m);
+	}
 
 	perf_end(_sample_perf);
 
