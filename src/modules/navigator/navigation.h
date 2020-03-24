@@ -94,6 +94,7 @@ enum NAV_CMD {
 	NAV_CMD_FENCE_POLYGON_VERTEX_EXCLUSION = 5002,
 	NAV_CMD_FENCE_CIRCLE_INCLUSION = 5003,
 	NAV_CMD_FENCE_CIRCLE_EXCLUSION = 5004,
+	NAV_CMD_CONDITION_GATE = 4501,
 	NAV_CMD_INVALID = UINT16_MAX /* ensure that casting a large number results in a specific error */
 };
 
@@ -217,10 +218,10 @@ struct mission_fence_point_s {
 };
 
 /**
- * Save Point (Rally Point).
+ * Safe Point (Rally Point).
  * Corresponds to the DM_KEY_SAFE_POINTS dataman item
  */
-struct mission_save_point_s {
+struct mission_safe_point_s {
 	double lat;
 	double lon;
 	float alt;

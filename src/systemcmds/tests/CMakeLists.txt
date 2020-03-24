@@ -32,11 +32,12 @@
 ############################################################################
 
 set(srcs
-	test_adc.c
+	test_adc.cpp
+	test_atomic_bitset.cpp
 	test_autodeclination.cpp
 	test_bezierQuad.cpp
+	test_bitset.cpp
 	test_bson.cpp
-	test_controlmath.cpp
 	test_conv.cpp
 	test_dataman.c
 	test_file.c
@@ -45,8 +46,9 @@ set(srcs
 	test_hott_telemetry.c
 	test_hrt.cpp
 	test_int.cpp
+	test_i2c_spi_cli.cpp
 	test_IntrusiveQueue.cpp
-	test_jig_voltages.c
+	test_jig_voltages.cpp
 	test_led.c
 	test_List.cpp
 	test_mathlib.cpp

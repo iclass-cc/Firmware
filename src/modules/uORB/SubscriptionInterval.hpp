@@ -39,7 +39,7 @@
 #pragma once
 
 #include <uORB/uORB.h>
-#include <px4_defines.h>
+#include <px4_platform_common/defines.h>
 
 #include "uORBDeviceNode.hpp"
 #include "uORBManager.hpp"
@@ -54,6 +54,18 @@ namespace uORB
 class SubscriptionInterval
 {
 public:
+
+	/**
+	 * Constructor
+	 *
+	 * @param id The uORB ORB_ID enum for the topic.
+	 * @param interval The requested maximum update interval in microseconds.
+	 * @param instance The instance for multi sub.
+	 */
+	SubscriptionInterval(ORB_ID id, uint32_t interval_us = 0, uint8_t instance = 0) :
+		_subscription{id, instance},
+		_interval_us(interval_us)
+	{}
 
 	/**
 	 * Constructor
@@ -73,14 +85,14 @@ public:
 
 	bool subscribe() { return _subscription.subscribe(); }
 
-	bool published() { return _subscription.published(); }
+	bool advertised() { return _subscription.advertised(); }
 
 	/**
 	 * Check if there is a new update.
 	 * */
 	bool updated()
 	{
-		if (published() && (hrt_elapsed_time(&_last_update) >= _interval_us)) {
+		if (advertised() && (hrt_elapsed_time(&_last_update) >= _interval_us)) {
 			return _subscription.updated();
 		}
 
@@ -120,6 +132,7 @@ public:
 
 	uint8_t		get_instance() const { return _subscription.get_instance(); }
 	orb_id_t	get_topic() const { return _subscription.get_topic(); }
+	ORB_PRIO	get_priority() { return _subscription.get_priority(); }
 
 	/**
 	 * Set the interval in microseconds
@@ -137,7 +150,7 @@ protected:
 
 	Subscription	_subscription;
 	uint64_t	_last_update{0};	// last update in microseconds
-	uint32_t	_interval_us{0};		// maximum update interval in microseconds
+	uint32_t	_interval_us{0};	// maximum update interval in microseconds
 
 };
 

@@ -35,15 +35,19 @@ set(SRCS)
 
 if (NOT "${PX4_PLATFORM}" MATCHES "qurt" AND NOT "${PX4_BOARD}" MATCHES "io-v2")
 	list(APPEND SRCS
-		px4_log.c
+		px4_log.cpp
 		)
 endif()
 
 add_library(px4_platform
+	board_identity.c
+	i2c.cpp
+	i2c_spi_buses.cpp
 	module.cpp
 	px4_getopt.c
 	px4_cli.cpp
 	shutdown.cpp
+	spi.cpp
 	${SRCS}
 	)
 add_dependencies(px4_platform prebuild_targets)
