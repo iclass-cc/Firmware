@@ -39,7 +39,6 @@ px4_add_board(
 	VENDOR atlflight
 	MODEL excelsior
 	LABEL default
-	#TESTING
 	TOOLCHAIN arm-oemllib32-linux-gnueabi
 	DRIVERS
 		#barometer # all available barometer drivers
@@ -63,8 +62,11 @@ px4_add_board(
 		dataman
 		ekf2
 		events
+		flight_mode_manager
 		fw_att_control
 		fw_pos_control_l1
+		gyro_calibration
+		gyro_fft
 		land_detector
 		landing_target_estimator
 		#load_mon
@@ -88,7 +90,6 @@ px4_add_board(
 		vtol_att_control
 	SYSTEMCMDS
 		#bl_update
-		#config
 		#dumpfile
 		esc_calib
 		#hardfault_log
@@ -101,16 +102,17 @@ px4_add_board(
 		param
 		perf
 		pwm
-		reboot
 		sd_bench
 		shutdown
-		#tests # tests and test runner
+		system_time
 		#top
 		topic_listener
 		tune_control
+		uorb
 		ver
 		work_queue
 	EXAMPLES
+		#fake_gps
 		#fixedwing_control # Tutorial code from https://px4.io/dev/example_fixedwing_control
 		#hello
 		#hwtest # Hardware test
@@ -119,4 +121,5 @@ px4_add_board(
 		#px4_simple_app # Tutorial code from http://dev.px4.io/en/apps/hello_sky.html
 		#rover_steering_control # Rover example app
 		#uuv_example_app
+		#work_item
 	)

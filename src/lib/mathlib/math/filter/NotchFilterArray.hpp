@@ -37,6 +37,7 @@
  * @brief Notch filter with array input/output
  *
  * @author Mathieu Bresciani <brescianimathieu@gmail.com>
+ * @author Samuel Garcin <samuel.garcin@wecorpindustries.com>
  */
 
 #pragma once
@@ -50,6 +51,8 @@ class NotchFilterArray : public NotchFilter<T>
 {
 	using NotchFilter<T>::_delay_element_1;
 	using NotchFilter<T>::_delay_element_2;
+	using NotchFilter<T>::_delay_element_output_1;
+	using NotchFilter<T>::_delay_element_output_2;
 	using NotchFilter<T>::_a1;
 	using NotchFilter<T>::_a2;
 	using NotchFilter<T>::_b0;
@@ -61,11 +64,7 @@ public:
 	NotchFilterArray() = default;
 	~NotchFilterArray() = default;
 
-	/**
-	 * Add new raw values to the filter
-	 *
-	 * @return retrieve the filtered result
-	 */
+	// Filter array of samples in place using the Direct form II.
 	inline void apply(T samples[], uint8_t num_samples)
 	{
 		for (int n = 0; n < num_samples; n++) {
@@ -81,6 +80,36 @@ public:
 
 			_delay_element_2 = _delay_element_1;
 			_delay_element_1 = delay_element_0;
+		}
+	}
+
+	/**
+	 * Add new raw values to the filter using the Direct form I.
+	 *
+	 * @return retrieve the filtered result
+	 */
+	inline void applyDF1(T samples[], uint8_t num_samples)
+	{
+		for (int n = 0; n < num_samples; n++) {
+			// Direct Form II implementation
+			T output = _b0 * samples[n] + _b1 * _delay_element_1 + _b2 * _delay_element_2 - _a1 * _delay_element_output_1 -
+				   _a2 * _delay_element_output_2;
+
+			// don't allow bad values to propagate via the filter
+			if (!isFinite(output)) {
+				output = samples[n];
+			}
+
+			// shift inputs
+			_delay_element_2 = _delay_element_1;
+			_delay_element_1 = samples[n];
+
+			// shift outputs
+			_delay_element_output_2 = _delay_element_output_1;
+			_delay_element_output_1 = output;
+
+			// writes value to array
+			samples[n] = output;
 		}
 	}
 };

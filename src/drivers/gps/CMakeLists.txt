@@ -38,6 +38,7 @@ px4_add_module(
 	MAIN gps
 	COMPILE_FLAGS
 		-Wno-cast-align # TODO: fix and enable
+		-Wno-stringop-overflow # due to https://gcc.gnu.org/bugzilla/show_bug.cgi?id=91707
 	SRCS
 		gps.cpp
 		devices/src/gps_helper.cpp
@@ -51,3 +52,4 @@ px4_add_module(
 	DEPENDS
 		git_gps_devices
 	)
+target_link_libraries(drivers__gps PRIVATE m)

@@ -15,7 +15,7 @@ px4_add_board(
 		TEL2:/dev/ttyS2
 		TEL4:/dev/ttyS3
 	DRIVERS
-		adc
+		adc/board_adc
 		barometer # all available barometer drivers
 		batt_smbus
 		camera_capture
@@ -23,21 +23,29 @@ px4_add_board(
 		differential_pressure # all available differential pressure drivers
 		distance_sensor # all available distance sensor drivers
 		gps
-		imu/adis16448
-		imu/adis16477
-		imu/adis16497
+		#heater
 		#imu # all available imu drivers
-		imu/bmi055
-		imu/mpu6000
-		lights/rgbled
-		lights/rgbled_ncp5623c
+		imu/analog_devices/adis16448
+		imu/bosch/bmi055
+		imu/invensense/icm20602
+		imu/invensense/icm20689
+		imu/invensense/icm20948 # required for ak09916 mag
+		lights # all available light drivers
 		lights/rgbled_pwm
 		magnetometer # all available magnetometer drivers
+		optical_flow # all available optical flow drivers
+		osd
+		pca9685
+		pca9685_pwm_out
+		power_monitor/ina226
+		#protocol_splitter
 		pwm_input
 		pwm_out_sim
-		px4fmu
+		pwm_out
 		px4io
 		rc_input
+		roboclaw
+		rpm
 		safety_button
 		telemetry # all available telemetry drivers
 		tone_alarm
@@ -49,9 +57,12 @@ px4_add_board(
 		commander
 		dataman
 		ekf2
+		esc_battery
 		events
 		fw_att_control
 		fw_pos_control_l1
+		gyro_calibration
+		gyro_fft
 		land_detector
 		load_mon
 		logger
@@ -63,13 +74,14 @@ px4_add_board(
 		vmount
 	SYSTEMCMDS
 		bl_update
-		config
 		dmesg
 		dumpfile
 		esc_calib
+		gpio
 		hardfault_log
 		i2cdetect
 		led_control
+		mft
 		mixer
 		motor_ramp
 		motor_test
@@ -81,10 +93,12 @@ px4_add_board(
 		reboot
 		reflect
 		sd_bench
-		shutdown
+		serial_test
+		system_time
 		top
 		topic_listener
 		tune_control
+		uorb
 		usb_connected
 		ver
 		work_queue

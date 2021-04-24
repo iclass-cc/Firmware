@@ -40,9 +40,7 @@
  */
 
 #include <drivers/device/i2c.h>
-#include <drivers/device/ringbuffer.h>
 #include <drivers/drv_hrt.h>
-#include <drivers/drv_range_finder.h>
 #include <lib/conversion/rotation.h>
 #include <lib/parameters/param.h>
 #include <lib/perf/perf_counter.h>
@@ -54,8 +52,6 @@
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/topics/distance_sensor.h>
 #include <uORB/topics/optical_flow.h>
-
-#define PX4FLOW0_DEVICE_PATH	"/dev/px4flow0"
 
 /* Configuration Constants */
 #define I2C_FLOW_ADDRESS_DEFAULT    0x42	///< 7-bit address. 8-bit address is 0x84, range 0x42 - 0x49
@@ -104,8 +100,6 @@ private:
 	uint8_t _sonar_rotation;
 	bool				_sensor_ok{false};
 	bool				_collect_phase{false};
-	int			_class_instance{-1};
-	int			_orb_class_instance{-1};
 
 	uORB::PublicationMulti<optical_flow_s>		_px4flow_topic{ORB_ID(optical_flow)};
 	uORB::PublicationMulti<distance_sensor_s>	_distance_sensor_topic{ORB_ID(distance_sensor)};
@@ -147,11 +141,11 @@ extern "C" __EXPORT int px4flow_main(int argc, char *argv[]);
 
 PX4FLOW::PX4FLOW(I2CSPIBusOption bus_option, int bus, int address, uint8_t sonar_rotation, int bus_frequency,
 		 int conversion_interval, enum Rotation rotation) :
-	I2C("PX4FLOW", PX4FLOW0_DEVICE_PATH, bus, address, bus_frequency),
+	I2C(DRV_FLOW_DEVTYPE_PX4FLOW, MODULE_NAME, bus, address, bus_frequency),
 	I2CSPIDriver(MODULE_NAME, px4::device_bus_to_wq(get_device_id()), bus_option, bus, address),
 	_sonar_rotation(sonar_rotation),
-	_sample_perf(perf_alloc(PC_ELAPSED, "px4f_read")),
-	_comms_errors(perf_alloc(PC_COUNT, "px4f_com_err")),
+	_sample_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": read")),
+	_comms_errors(perf_alloc(PC_COUNT, MODULE_NAME": com_err")),
 	_sensor_rotation(rotation)
 {
 }
@@ -171,8 +165,6 @@ PX4FLOW::init()
 	if (I2C::init() != OK) {
 		return ret;
 	}
-
-	_class_instance = register_class_devname(RANGE_FINDER_BASE_DEVICE_PATH);
 
 	ret = OK;
 	/* sensor is ok, but we don't really know if it is within range */
@@ -319,8 +311,12 @@ PX4FLOW::collect()
 	_px4flow_topic.publish(report);
 
 	/* publish to the distance_sensor topic as well */
-	if (_class_instance == CLASS_DEVICE_PRIMARY) {
+	if (_distance_sensor_topic.get_instance() == 0) {
 		distance_sensor_s distance_report{};
+		DeviceId device_id;
+		device_id.devid = get_device_id();
+		device_id.devid_s.devtype = DRV_DIST_DEVTYPE_PX4FLOW;
+
 		distance_report.timestamp = report.timestamp;
 		distance_report.min_distance = PX4FLOW_MIN_DISTANCE;
 		distance_report.max_distance = PX4FLOW_MAX_DISTANCE;
@@ -328,8 +324,7 @@ PX4FLOW::collect()
 		distance_report.variance = 0.0f;
 		distance_report.signal_quality = -1;
 		distance_report.type = distance_sensor_s::MAV_DISTANCE_SENSOR_ULTRASOUND;
-		/* TODO: the ID needs to be properly set */
-		distance_report.id = 0;
+		distance_report.device_id = device_id.devid;
 		distance_report.orientation = _sonar_rotation;
 
 		_distance_sensor_topic.publish(distance_report);

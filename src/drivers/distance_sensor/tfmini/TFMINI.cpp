@@ -33,15 +33,31 @@
 
 #include "TFMINI.hpp"
 
+#include <lib/drivers/device/Device.hpp>
+#include <fcntl.h>
+
 TFMINI::TFMINI(const char *port, uint8_t rotation) :
 	ScheduledWorkItem(MODULE_NAME, px4::serial_port_to_wq(port)),
-	_px4_rangefinder(0 /* TODO: device id */, ORB_PRIO_DEFAULT, rotation)
+	_px4_rangefinder(0, rotation)
 {
 	// store port name
 	strncpy(_port, port, sizeof(_port) - 1);
 
 	// enforce null termination
 	_port[sizeof(_port) - 1] = '\0';
+
+	device::Device::DeviceId device_id;
+	device_id.devid_s.devtype = DRV_DIST_DEVTYPE_TFMINI;
+	device_id.devid_s.bus_type = device::Device::DeviceBusType_SERIAL;
+
+	uint8_t bus_num = atoi(&_port[strlen(_port) - 1]); // Assuming '/dev/ttySx'
+
+	if (bus_num < 10) {
+		device_id.devid_s.bus = bus_num;
+	}
+
+	_px4_rangefinder.set_device_id(device_id.devid);
+	_px4_rangefinder.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_LASER);
 }
 
 TFMINI::~TFMINI()
@@ -60,7 +76,12 @@ TFMINI::init()
 
 	switch (hw_model) {
 	case 1: // TFMINI (12m, 100 Hz)
-		_px4_rangefinder.set_min_distance(0.3f);
+		// Note:
+		// Sensor specification shows 0.3m as minimum, but in practice
+		// 0.3 is too close to minimum so chattering of invalid sensor decision
+		// is happening sometimes. this cause EKF to believe inconsistent range readings.
+		// So we set 0.4 as valid minimum.
+		_px4_rangefinder.set_min_distance(0.4f);
 		_px4_rangefinder.set_max_distance(12.0f);
 		_px4_rangefinder.set_fov(math::radians(1.15f));
 
@@ -257,6 +278,4 @@ TFMINI::print_info()
 	printf("Using port '%s'\n", _port);
 	perf_print_counter(_sample_perf);
 	perf_print_counter(_comms_errors);
-
-	_px4_rangefinder.print_status();
 }
