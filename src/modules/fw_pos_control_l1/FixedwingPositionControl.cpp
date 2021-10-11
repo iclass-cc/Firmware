@@ -842,7 +842,7 @@ FixedwingPositionControl::control_position(const hrt_abstime &now, const Vector2
 			if (pos_sp_curr.type == position_setpoint_s::SETPOINT_TYPE_POSITION) {
 				// POSITION: achieve position setpoint altitude via loiter
 				// close to waypoint, but altitude error greater than twice acceptance
-				if ((dist >= 0.f)
+				if ((!_vehicle_status.in_transition_mode) && (dist >= 0.f)
 				    && (dist_z > 2.f * _param_fw_clmbout_diff.get())
 				    && (dist_xy < 2.f * math::max(acc_rad, fabsf(pos_sp_curr.loiter_radius)))) {
 					// SETPOINT_TYPE_POSITION -> SETPOINT_TYPE_LOITER
@@ -980,7 +980,7 @@ FixedwingPositionControl::control_position(const hrt_abstime &now, const Vector2
 			control_landing(now, curr_pos, ground_speed, pos_sp_prev, pos_sp_curr);
 
 		} else if (position_sp_type == position_setpoint_s::SETPOINT_TYPE_TAKEOFF) {
-			control_takeoff(now, curr_pos, ground_speed, pos_sp_prev, pos_sp_curr);
+			control_takeoff(now, dt, curr_pos, ground_speed, pos_sp_prev, pos_sp_curr);
 		}
 
 		/* reset landing state */
@@ -1106,7 +1106,17 @@ FixedwingPositionControl::control_position(const hrt_abstime &now, const Vector2
 
 			_hdg_hold_enabled = false;
 			_yaw_lock_engaged = false;
-			_att_sp.roll_body = _manual_control_setpoint.y * radians(_param_fw_man_r_max.get());
+
+			// do slew rate limiting on roll if enabled
+			float roll_sp_new = _manual_control_setpoint.y * radians(_param_fw_man_r_max.get());
+			const float roll_rate_slew_rad = radians(_param_fw_l1_r_slew_max.get());
+
+			if (dt > 0.f && roll_rate_slew_rad > 0.f) {
+				roll_sp_new = constrain(roll_sp_new, _att_sp.roll_body - roll_rate_slew_rad * dt,
+							_att_sp.roll_body + roll_rate_slew_rad * dt);
+			}
+
+			_att_sp.roll_body = roll_sp_new;
 			_att_sp.yaw_body = 0;
 		}
 
@@ -1236,7 +1246,7 @@ FixedwingPositionControl::control_position(const hrt_abstime &now, const Vector2
 }
 
 void
-FixedwingPositionControl::control_takeoff(const hrt_abstime &now, const Vector2d &curr_pos,
+FixedwingPositionControl::control_takeoff(const hrt_abstime &now, const float dt, const Vector2d &curr_pos,
 		const Vector2f &ground_speed, const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr)
 {
 	/* current waypoint (the one currently heading for) */
@@ -1331,7 +1341,7 @@ FixedwingPositionControl::control_takeoff(const hrt_abstime &now, const Vector2d
 				}
 
 				/* Detect launch using body X (forward) acceleration */
-				_launchDetector.update(now, _body_acceleration(0));
+				_launchDetector.update(dt, _body_acceleration(0));
 
 				/* update our copy of the launch detection state */
 				_launch_detection_state = _launchDetector.getLaunchDetected();

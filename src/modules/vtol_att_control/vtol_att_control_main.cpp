@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2013-2019 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2013-2021 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,7 +35,7 @@
  * @file VTOL_att_control_main.cpp
  * Implementation of an attitude controller for VTOL airframes. This module receives data
  * from both the fixed wing- and the multicopter attitude controllers and processes it.
- * It computes the correct actuator controls depending on which mode the vehicle is in (hover,forward-
+ * It computes the correct actuator controls depending on which mode the vehicle is in (hover, forward-
  * flight or transition). It also publishes the resulting controls on the actuator controls topics.
  *
  * @author Roman Bapst 		<bapstr@ethz.ch>
@@ -91,8 +91,7 @@ VtolAttitudeControl::VtolAttitudeControl() :
 	_params_handles.dec_to_pitch_i = param_find("VT_B_DEC_I");
 	_params_handles.back_trans_dec_sp = param_find("VT_B_DEC_MSS");
 
-
-	_params_handles.down_pitch_max = param_find("VT_DWN_PITCH_MAX");
+	_params_handles.pitch_min_rad = param_find("VT_PTCH_MIN");
 	_params_handles.forward_thrust_scale = param_find("VT_FWD_THRUST_SC");
 	_params_handles.vt_mc_on_fmu = param_find("VT_MC_ON_FMU");
 
@@ -100,8 +99,8 @@ VtolAttitudeControl::VtolAttitudeControl() :
 	_params_handles.mpc_land_alt1 = param_find("MPC_LAND_ALT1");
 	_params_handles.mpc_land_alt2 = param_find("MPC_LAND_ALT2");
 
-	_params_handles.down_pitch_max = param_find("VT_DWN_PITCH_MAX");
-	_params_handles.forward_thrust_scale = param_find("VT_FWD_THRUST_SC");
+	_params_handles.land_pitch_min_rad = param_find("VT_LND_PTCH_MIN");
+
 	/* fetch initial parameter values */
 	parameters_update();
 
@@ -206,8 +205,9 @@ VtolAttitudeControl::quadchute(QuadchuteReason reason)
 	if (!_vtol_vehicle_status.vtol_transition_failsafe) {
 		switch (reason) {
 		case QuadchuteReason::TransitionTimeout:
-			mavlink_log_critical(&_mavlink_log_pub, "Quadchute: timeout\t");
-			events::send(events::ID("vtol_att_ctrl_quadchute_tout"), events::Log::Critical, "Quadchute triggered, due to timeout");
+			mavlink_log_critical(&_mavlink_log_pub, "Quadchute: transition timeout\t");
+			events::send(events::ID("vtol_att_ctrl_quadchute_tout"), events::Log::Critical,
+				     "Quadchute triggered, due to transition timeout");
 			break;
 
 		case QuadchuteReason::ExternalCommand:
@@ -325,8 +325,12 @@ VtolAttitudeControl::parameters_update()
 	_params.diff_thrust_scale = math::constrain(v, -1.0f, 1.0f);
 
 	/* maximum down pitch allowed */
-	param_get(_params_handles.down_pitch_max, &v);
-	_params.down_pitch_max = math::radians(v);
+	param_get(_params_handles.pitch_min_rad, &v);
+	_params.pitch_min_rad = math::radians(v);
+
+	/* maximum down pitch allowed during landing*/
+	param_get(_params_handles.land_pitch_min_rad, &v);
+	_params.land_pitch_min_rad = math::radians(v);
 
 	/* scale for fixed wing thrust used for forward acceleration in multirotor mode */
 	param_get(_params_handles.forward_thrust_scale, &_params.forward_thrust_scale);

@@ -1911,31 +1911,6 @@ Commander::run()
 					_status_flags.condition_power_input_valid = true;
 				}
 
-#if defined(CONFIG_BOARDCTL_RESET)
-
-				if (!_status_flags.circuit_breaker_engaged_usb_check && _status_flags.usb_connected) {
-					/* if the USB hardware connection went away, reboot */
-					if (_system_power_usb_connected && !system_power.usb_connected) {
-						/*
-						 * Apparently the USB cable went away but we are still powered,
-						 * so we bring the system back to a nominal state for flight.
-						 * This is important to unload the USB stack of the OS which is
-						 * a relatively complex piece of software that is non-essential
-						 * for flight and continuing to run it would add a software risk
-						 * without a need. The clean approach to unload it is to reboot.
-						 */
-						if (shutdown_if_allowed() && (px4_reboot_request(false, 400_ms) == 0)) {
-							mavlink_log_critical(&_mavlink_log_pub, "USB disconnected, rebooting for flight safety\t");
-							events::send(events::ID("commander_reboot_usb_disconnect"), {events::Log::Critical, events::LogInternal::Info},
-								     "USB disconnected, rebooting for flight safety");
-
-							while (1) { px4_usleep(1); }
-						}
-					}
-				}
-
-#endif // CONFIG_BOARDCTL_RESET
-
 				_system_power_usb_connected = system_power.usb_connected;
 			}
 		}
@@ -2417,21 +2392,28 @@ Commander::run()
 			if ((_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING)
 			    && !in_low_battery_failsafe && !_geofence_warning_action_on
 			    && _manual_control.wantsOverride(_vehicle_control_mode, _status)) {
-				if (main_state_transition(_status, commander_state_s::MAIN_STATE_POSCTL, _status_flags,
-							  _internal_state) == TRANSITION_CHANGED) {
+				const transition_result_t posctl_result =
+					main_state_transition(_status, commander_state_s::MAIN_STATE_POSCTL, _status_flags, _internal_state);
+
+				if (posctl_result == TRANSITION_CHANGED) {
 					tune_positive(true);
 					mavlink_log_info(&_mavlink_log_pub, "Pilot took over position control using sticks\t");
 					events::send(events::ID("commander_rc_override_pos"), events::Log::Info,
 						     "Pilot took over position control using sticks");
 					_status_changed = true;
 
-				} else if (main_state_transition(_status, commander_state_s::MAIN_STATE_ALTCTL, _status_flags,
-								 _internal_state) == TRANSITION_CHANGED) {
-					tune_positive(true);
-					mavlink_log_info(&_mavlink_log_pub, "Pilot took over altitude control using sticks\t");
-					events::send(events::ID("commander_rc_override_alt"), events::Log::Info,
-						     "Pilot took over altitude control using sticks");
-					_status_changed = true;
+				} else if (posctl_result == TRANSITION_DENIED) {
+					// If transition to POSCTL was denied, then we can try again with ALTCTL.
+					const transition_result_t altctl_result =
+						main_state_transition(_status, commander_state_s::MAIN_STATE_ALTCTL, _status_flags, _internal_state);
+
+					if (altctl_result == TRANSITION_CHANGED) {
+						tune_positive(true);
+						mavlink_log_info(&_mavlink_log_pub, "Pilot took over altitude control using sticks\t");
+						events::send(events::ID("commander_rc_override_alt"), events::Log::Info,
+							     "Pilot took over altitude control using sticks");
+						_status_changed = true;
+					}
 				}
 			}
 
@@ -2664,6 +2646,11 @@ Commander::run()
 					}
 				}
 			}
+		}
+
+		// Publish wind speed warning if enabled via parameter
+		if (_param_com_wind_warn.get() > FLT_EPSILON && !_land_detector.landed) {
+			checkWindAndWarn();
 		}
 
 		/* Get current timestamp */
@@ -4190,6 +4177,27 @@ void Commander::send_parachute_command()
 	vcmd_pub.publish(vcmd);
 
 	set_tune_override(tune_control_s::TUNE_ID_PARACHUTE_RELEASE);
+}
+
+void Commander::checkWindAndWarn()
+{
+	wind_s wind_estimate;
+
+	if (_wind_sub.update(&wind_estimate)) {
+		const matrix::Vector2f wind(wind_estimate.windspeed_north, wind_estimate.windspeed_east);
+
+		// publish a warning if it's the first since in air or 60s have passed since the last warning
+		const bool warning_timeout_passed = _last_wind_warning == 0 || hrt_elapsed_time(&_last_wind_warning) > 60_s;
+
+		if (wind.longerThan(_param_com_wind_warn.get()) && warning_timeout_passed) {
+			mavlink_log_critical(&_mavlink_log_pub, "High wind speed detected (%.1f m/s), landing advised\t", (double)wind.norm());
+
+			events::send<float>(events::ID("commander_high_wind_warning"),
+			{events::Log::Warning, events::LogInternal::Info},
+			"High wind speed detected ({1:.1m/s}), landing advised", wind.norm());
+			_last_wind_warning = hrt_absolute_time();
+		}
+	}
 }
 
 int Commander::print_usage(const char *reason)
