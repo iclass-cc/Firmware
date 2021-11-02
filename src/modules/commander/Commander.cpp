@@ -1039,7 +1039,7 @@ Commander::handle_command(const vehicle_command_s &cmd)
 
 			} else {
 				float yaw = matrix::wrap_2pi(math::radians(cmd.param4));
-				yaw = PX4_ISFINITE(yaw) ? yaw : NAN;
+				yaw = PX4_ISFINITE(yaw) ? yaw : (float)NAN;
 				const double lat = cmd.param5;
 				const double lon = cmd.param6;
 				const float alt = cmd.param7;
@@ -1211,13 +1211,28 @@ Commander::handle_command(const vehicle_command_s &cmd)
 
 	case vehicle_command_s::VEHICLE_CMD_DO_ORBIT:
 
-		// Switch to orbit state and let the orbit task handle the command further
-		if (TRANSITION_DENIED != main_state_transition(_status, commander_state_s::MAIN_STATE_ORBIT, _status_flags,
-				_internal_state)) {
+		transition_result_t main_ret;
+
+		if (_status.in_transition_mode) {
+			main_ret = TRANSITION_DENIED;
+
+		} else if (_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING) {
+			// for fixed wings the behavior of orbit is the same as loiter
+			main_ret = main_state_transition(_status, commander_state_s::MAIN_STATE_AUTO_LOITER,
+							 _status_flags, _internal_state);
+
+		} else {
+			// Switch to orbit state and let the orbit task handle the command further
+			main_ret = main_state_transition(_status, commander_state_s::MAIN_STATE_ORBIT, _status_flags,
+							 _internal_state);
+		}
+
+		if ((main_ret != TRANSITION_DENIED)) {
 			cmd_result = vehicle_command_s::VEHICLE_CMD_RESULT_ACCEPTED;
 
 		} else {
 			cmd_result = vehicle_command_s::VEHICLE_CMD_RESULT_TEMPORARILY_REJECTED;
+			mavlink_log_critical(&_mavlink_log_pub, "Orbit command rejected");
 		}
 
 		break;
@@ -3897,7 +3912,7 @@ void Commander::estimator_check()
 
 		if (run_quality_checks && _status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
 
-			if (_status.arming_state == vehicle_status_s::ARMING_STATE_STANDBY) {
+			if (_status.arming_state != vehicle_status_s::ARMING_STATE_ARMED) {
 				_nav_test_failed = false;
 				_nav_test_passed = false;
 
@@ -3958,16 +3973,28 @@ void Commander::estimator_check()
 						&& (fabsf(q(3)) <= 1.f);
 	const bool norm_in_tolerance = (fabsf(1.f - q.norm()) <= FLT_EPSILON);
 
-	_status_flags.condition_attitude_valid = (hrt_elapsed_time(&attitude.timestamp) < 1_s)
-			&& norm_in_tolerance
-			&& no_element_larger_than_one;
+	const bool condition_attitude_valid = (hrt_elapsed_time(&attitude.timestamp) < 1_s)
+					      && norm_in_tolerance && no_element_larger_than_one;
+
+	if (_status_flags.condition_attitude_valid && !condition_attitude_valid) {
+		PX4_ERR("attitude estimate no longer valid");
+	}
+
+	_status_flags.condition_attitude_valid = condition_attitude_valid;
+
 
 	// angular velocity
 	vehicle_angular_velocity_s angular_velocity{};
 	_vehicle_angular_velocity_sub.copy(&angular_velocity);
-	_status_flags.condition_angular_velocity_valid = (hrt_elapsed_time(&angular_velocity.timestamp) < 1_s)
+	const bool condition_angular_velocity_valid = (hrt_elapsed_time(&angular_velocity.timestamp) < 1_s)
 			&& PX4_ISFINITE(angular_velocity.xyz[0]) && PX4_ISFINITE(angular_velocity.xyz[1])
 			&& PX4_ISFINITE(angular_velocity.xyz[2]);
+
+	if (_status_flags.condition_angular_velocity_valid && !condition_angular_velocity_valid) {
+		PX4_ERR("angular velocity no longer valid");
+	}
+
+	_status_flags.condition_angular_velocity_valid = condition_angular_velocity_valid;
 }
 
 void Commander::UpdateEstimateValidity()
@@ -4232,7 +4259,7 @@ The commander module contains the state machine for mode switching and failsafe 
 			"Flight mode", false);
 	PRINT_MODULE_USAGE_COMMAND("pair");
 	PRINT_MODULE_USAGE_COMMAND("lockdown");
-	PRINT_MODULE_USAGE_ARG("off", "Turn lockdown off", true);
+	PRINT_MODULE_USAGE_ARG("on|off", "Turn lockdown on or off", false);
 	PRINT_MODULE_USAGE_COMMAND("set_ekf_origin");
 	PRINT_MODULE_USAGE_ARG("lat, lon, alt", "Origin Latitude, Longitude, Altitude", false);
 	PRINT_MODULE_USAGE_COMMAND_DESCR("lat|lon|alt", "Origin latitude longitude altitude");
