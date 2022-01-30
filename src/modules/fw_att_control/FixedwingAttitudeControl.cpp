@@ -65,6 +65,8 @@ FixedwingAttitudeControl::FixedwingAttitudeControl(bool vtol) :
 	_pitch_ctrl.set_max_rate_pos(radians(_param_fw_acro_y_max.get()));
 	_pitch_ctrl.set_max_rate_neg(radians(_param_fw_acro_y_max.get()));
 	_yaw_ctrl.set_max_rate(radians(_param_fw_acro_z_max.get()));
+
+	_rate_ctrl_status_pub.advertise();
 }
 
 FixedwingAttitudeControl::~FixedwingAttitudeControl()
@@ -186,7 +188,8 @@ FixedwingAttitudeControl::vehicle_manual_poll(const float yaw_body)
 						-_manual_control_setpoint.x * _param_fw_man_p_sc.get() + _param_trim_pitch.get();
 					_actuators.control[actuator_controls_s::INDEX_YAW] =
 						_manual_control_setpoint.r * _param_fw_man_y_sc.get() + _param_trim_yaw.get();
-					_actuators.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(_manual_control_setpoint.z, 0.0f, 1.0f);
+					_actuators.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(_manual_control_setpoint.z, 0.0f,
+							1.0f);
 				}
 			}
 		}
@@ -657,12 +660,41 @@ void FixedwingAttitudeControl::Run()
 		    _vcontrol_mode.flag_control_attitude_enabled ||
 		    _vcontrol_mode.flag_control_manual_enabled) {
 			_actuators_0_pub.publish(_actuators);
+
+			if (!_vehicle_status.is_vtol) {
+				publishTorqueSetpoint(angular_velocity.timestamp_sample);
+				publishThrustSetpoint(angular_velocity.timestamp_sample);
+			}
 		}
 
 		updateActuatorControlsStatus(dt);
 	}
 
 	perf_end(_loop_perf);
+}
+
+void FixedwingAttitudeControl::publishTorqueSetpoint(const hrt_abstime &timestamp_sample)
+{
+	vehicle_torque_setpoint_s v_torque_sp = {};
+	v_torque_sp.timestamp = hrt_absolute_time();
+	v_torque_sp.timestamp_sample = timestamp_sample;
+	v_torque_sp.xyz[0] = _actuators.control[actuator_controls_s::INDEX_ROLL];
+	v_torque_sp.xyz[1] = _actuators.control[actuator_controls_s::INDEX_PITCH];
+	v_torque_sp.xyz[2] = _actuators.control[actuator_controls_s::INDEX_YAW];
+
+	_vehicle_torque_setpoint_pub.publish(v_torque_sp);
+}
+
+void FixedwingAttitudeControl::publishThrustSetpoint(const hrt_abstime &timestamp_sample)
+{
+	vehicle_thrust_setpoint_s v_thrust_sp = {};
+	v_thrust_sp.timestamp = hrt_absolute_time();
+	v_thrust_sp.timestamp_sample = timestamp_sample;
+	v_thrust_sp.xyz[0] = _actuators.control[actuator_controls_s::INDEX_THROTTLE];
+	v_thrust_sp.xyz[1] = 0.0f;
+	v_thrust_sp.xyz[2] = 0.0f;
+
+	_vehicle_thrust_setpoint_pub.publish(v_thrust_sp);
 }
 
 void FixedwingAttitudeControl::control_flaps(const float dt)

@@ -34,7 +34,7 @@
 /**
  * @file commander_params.c
  *
- * Parameters defined by the sensors task.
+ * Parameters definition for Commander.
  *
  * @author Lorenz Meier <lorenz@px4.io>
  * @author Thomas Gubler <thomas@px4.io>
@@ -203,6 +203,17 @@ PARAM_DEFINE_FLOAT(COM_RC_LOSS_T, 0.5f);
 PARAM_DEFINE_FLOAT(COM_RCL_ACT_T, 15.0f);
 
 /**
+ * Home position enabled
+ *
+ * Set home position automatically if possible.
+ *
+ * @group Commander
+ * @reboot_required true
+ * @boolean
+ */
+PARAM_DEFINE_INT32(COM_HOME_EN, 1);
+
+/**
  * Home set horizontal threshold
  *
  * The home position will be set if the estimated positioning accuracy is below the threshold.
@@ -252,12 +263,14 @@ PARAM_DEFINE_INT32(COM_HOME_IN_AIR, 0);
  *
  * @group Commander
  * @min 0
- * @max 2
- * @value 0 RC Transmitter
- * @value 1 Joystick/No RC Checks
- * @value 2 Virtual RC by Joystick
+ * @max 4
+ * @value 0 RC Transmitter only
+ * @value 1 Joystick only
+ * @value 2 RC and Joystick with fallback
+ * @value 3 RC or Joystick keep first
+ * @value 4 Stick input disabled
  */
-PARAM_DEFINE_INT32(COM_RC_IN_MODE, 0);
+PARAM_DEFINE_INT32(COM_RC_IN_MODE, 3);
 
 /**
  * RC input arm/disarm command duration
@@ -338,6 +351,23 @@ PARAM_DEFINE_INT32(COM_ARM_SWISBTN, 0);
  * @increment 1
  */
 PARAM_DEFINE_INT32(COM_LOW_BAT_ACT, 0);
+
+/**
+ * Imbalanced propeller failsafe mode
+ *
+ * Action the system takes when an imbalanced propeller is detected by the failure detector.
+ * See also FD_IMB_PROP_THR to set the failure threshold.
+ *
+ * @group Commander
+ *
+ * @value -1 Disabled
+ * @value 0 Warning
+ * @value 1 Return
+ * @value 2 Land
+ * @decimal 0
+ * @increment 1
+ */
+PARAM_DEFINE_INT32(COM_IMB_PROP_ACT, 0);
 
 /**
  * Time-out to wait when offboard connection is lost before triggering offboard lost action.
@@ -629,7 +659,7 @@ PARAM_DEFINE_INT32(COM_ARM_MAG_ANG, 45);
  *
  * @group Commander
  */
-PARAM_DEFINE_INT32(COM_ARM_MAG_STR, 1);
+PARAM_DEFINE_INT32(COM_ARM_MAG_STR, 2);
 
 /**
  * Rearming grace period
@@ -644,18 +674,18 @@ PARAM_DEFINE_INT32(COM_REARM_GRACE, 1);
 /**
  * Enable RC stick override of auto and/or offboard modes
  *
- * When RC stick override is enabled, moving the RC sticks more than COM_RC_STICK_OV from
- * their center position immediately gives control back to the pilot by switching to Position mode.
+ * When RC stick override is enabled, moving the RC sticks more than COM_RC_STICK_OV
+ * immediately gives control back to the pilot by switching to Position mode and
+ * if position is unavailable Altitude mode.
  * Note: Only has an effect on multicopters, and VTOLs in multicopter mode.
  *
  * This parameter is not considered in case of a GPS failure (Descend flight mode), where stick
  * override is always enabled.
  *
  * @min 0
- * @max 7
+ * @max 3
  * @bit 0 Enable override during auto modes (except for in critical battery reaction)
  * @bit 1 Enable override during offboard mode
- * @bit 2 Ignore throttle stick
  * @group Commander
  */
 PARAM_DEFINE_INT32(COM_RC_OVERRIDE, 1);
@@ -901,6 +931,14 @@ PARAM_DEFINE_INT32(COM_RCL_EXCEPT, 0);
  * @group Commander
  */
 PARAM_DEFINE_INT32(COM_OBS_AVOID, 0);
+
+/**
+ * Expect and require a healthy MAVLink parachute system
+ *
+ * @boolean
+ * @group Commander
+ */
+PARAM_DEFINE_INT32(COM_PARACHUTE, 0);
 
 /**
  * User Flight Profile

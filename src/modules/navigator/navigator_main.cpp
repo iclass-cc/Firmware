@@ -83,7 +83,6 @@ Navigator::Navigator() :
 	_precland(this),
 	_rtl(this),
 	_engineFailure(this),
-	_gpsFailure(this),
 	_follow_target(this)
 {
 	/* Create a list of our possible navigation types */
@@ -91,11 +90,10 @@ Navigator::Navigator() :
 	_navigation_mode_array[1] = &_loiter;
 	_navigation_mode_array[2] = &_rtl;
 	_navigation_mode_array[3] = &_engineFailure;
-	_navigation_mode_array[4] = &_gpsFailure;
-	_navigation_mode_array[5] = &_takeoff;
-	_navigation_mode_array[6] = &_land;
-	_navigation_mode_array[7] = &_precland;
-	_navigation_mode_array[8] = &_follow_target;
+	_navigation_mode_array[4] = &_takeoff;
+	_navigation_mode_array[5] = &_land;
+	_navigation_mode_array[6] = &_precland;
+	_navigation_mode_array[7] = &_follow_target;
 
 	_handle_back_trans_dec_mss = param_find("VT_B_DEC_MSS");
 	_handle_reverse_delay = param_find("VT_B_REV_DEL");
@@ -575,24 +573,12 @@ Navigator::run()
 
 				const bool rtl_activated = _previous_nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_RTL;
 
-				switch (rtl_type()) {
-				case RTL::RTL_LAND: // use mission landing
-				case RTL::RTL_CLOSEST:
-					if (rtl_activated) {
-						if (rtl_type() == RTL::RTL_LAND) {
-							mavlink_log_info(get_mavlink_log_pub(), "RTL LAND activated\t");
-							events::send(events::ID("navigator_rtl_landing_activated"), events::Log::Info, "RTL activated");
+				switch (_rtl.get_rtl_type()) {
+				case RTL::RTL_TYPE_MISSION_LANDING:
+				case RTL::RTL_TYPE_CLOSEST:
 
-						} else {
-							mavlink_log_info(get_mavlink_log_pub(), "RTL Closest landing point activated\t");
-							events::send(events::ID("navigator_rtl_closest_point_activated"), events::Log::Info,
-								     "RTL to closest landing point activated");
-						}
-
-					}
-
-					if (!rtl_activated && !_rtl.denyMissionLanding() && _rtl.getClimbAndReturnDone()
-					    && get_mission_start_land_available()) {
+					if (!rtl_activated && _rtl.getClimbAndReturnDone()
+					    && _rtl.getDestinationTypeMissionLanding()) {
 						_mission.set_execution_mode(mission_result_s::MISSION_EXECUTION_MODE_FAST_FORWARD);
 
 						if (!getMissionLandingInProgress() && _vstatus.arming_state == vehicle_status_s::ARMING_STATE_ARMED
@@ -608,7 +594,7 @@ Navigator::run()
 
 					break;
 
-				case RTL::RTL_MISSION:
+				case RTL::RTL_TYPE_MISSION_LANDING_REVERSED:
 					if (_mission.get_land_start_available() && !get_land_detected()->landed) {
 						// the mission contains a landing spot
 						_mission.set_execution_mode(mission_result_s::MISSION_EXECUTION_MODE_FAST_FORWARD);
@@ -706,11 +692,6 @@ Navigator::run()
 			navigation_mode_new = &_engineFailure;
 			break;
 
-		case vehicle_status_s::NAVIGATION_STATE_AUTO_LANDGPSFAIL:
-			_pos_sp_triplet_published_invalid_once = false;
-			navigation_mode_new = &_gpsFailure;
-			break;
-
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_FOLLOW_TARGET:
 			_pos_sp_triplet_published_invalid_once = false;
 			navigation_mode_new = &_follow_target;
@@ -750,6 +731,20 @@ Navigator::run()
 			      navigation_mode_new == &_loiter)) {
 				reset_triplets();
 			}
+
+			// transition to hover in Descend mode
+			if (_vstatus.nav_state == vehicle_status_s::NAVIGATION_STATE_DESCEND &&
+			    _vstatus.is_vtol && _vstatus.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING &&
+			    force_vtol()) {
+				vehicle_command_s vcmd = {};
+				vcmd.command = NAV_CMD_DO_VTOL_TRANSITION;
+				vcmd.param1 = vtol_vehicle_status_s::VEHICLE_VTOL_STATE_MC;
+				publish_vehicle_cmd(&vcmd);
+				mavlink_log_info(&_mavlink_log_pub, "Transition to hover mode and descend.\t");
+				events::send(events::ID("navigator_transition_descend"), events::Log::Critical,
+					     "Transition to hover mode and descend");
+			}
+
 		}
 
 		_navigation_mode = navigation_mode_new;
@@ -860,7 +855,7 @@ void Navigator::geofence_breach_check(bool &have_geofence_position_data)
 				if (_geofence.getGeofenceAction() == geofence_result_s::GF_ACTION_LOITER) {
 					position_setpoint_triplet_s *rep = get_reposition_triplet();
 
-					matrix::Vector2<double> lointer_center_lat_lon;
+					matrix::Vector2<double> loiter_center_lat_lon;
 					matrix::Vector2<double> current_pos_lat_lon(_global_pos.lat, _global_pos.lon);
 					float loiter_altitude_amsl = _global_pos.alt;
 
@@ -868,22 +863,22 @@ void Navigator::geofence_breach_check(bool &have_geofence_position_data)
 					if (_vstatus.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
 						// the computation of the braking distance does not match the actual braking distance. Until we have a better model
 						// we set the loiter point to the current position, that will make sure that the vehicle will loiter inside the fence
-						lointer_center_lat_lon =  _gf_breach_avoidance.generateLoiterPointForMultirotor(gf_violation_type,
-									  &_geofence);
+						loiter_center_lat_lon =  _gf_breach_avoidance.generateLoiterPointForMultirotor(gf_violation_type,
+									 &_geofence);
 
 						loiter_altitude_amsl = _gf_breach_avoidance.generateLoiterAltitudeForMulticopter(gf_violation_type);
 
 					} else {
 
-						lointer_center_lat_lon = _gf_breach_avoidance.generateLoiterPointForFixedWing(gf_violation_type, &_geofence);
+						loiter_center_lat_lon = _gf_breach_avoidance.generateLoiterPointForFixedWing(gf_violation_type, &_geofence);
 						loiter_altitude_amsl = _gf_breach_avoidance.generateLoiterAltitudeForFixedWing(gf_violation_type);
 					}
 
 					rep->current.timestamp = hrt_absolute_time();
 					rep->current.yaw = get_local_position()->heading;
 					rep->current.yaw_valid = true;
-					rep->current.lat = lointer_center_lat_lon(0);
-					rep->current.lon = lointer_center_lat_lon(1);
+					rep->current.lat = loiter_center_lat_lon(0);
+					rep->current.lon = loiter_center_lat_lon(1);
 					rep->current.alt = loiter_altitude_amsl;
 					rep->current.valid = true;
 					rep->current.loiter_radius = get_loiter_radius();
@@ -916,7 +911,7 @@ int Navigator::task_spawn(int argc, char *argv[])
 	_task_id = px4_task_spawn_cmd("navigator",
 				      SCHED_DEFAULT,
 				      SCHED_PRIORITY_NAVIGATION,
-				      PX4_STACK_ADJUSTED(1864),
+				      PX4_STACK_ADJUSTED(1952),
 				      (px4_main_t)&run_trampoline,
 				      (char *const *)argv);
 

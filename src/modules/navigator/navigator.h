@@ -44,7 +44,6 @@
 #include "enginefailure.h"
 #include "follow_target.h"
 #include "geofence.h"
-#include "gpsfailure.h"
 #include "land.h"
 #include "precland.h"
 #include "loiter.h"
@@ -86,7 +85,7 @@ using namespace time_literals;
 /**
  * Number of navigation modes that need on_active/on_inactive calls
  */
-#define NAVIGATOR_MODE_ARRAY_SIZE 9
+#define NAVIGATOR_MODE_ARRAY_SIZE 8
 
 class Navigator : public ModuleBase<Navigator>, public ModuleParams
 {
@@ -287,8 +286,7 @@ public:
 	float 	get_mission_landing_alt() { return _mission.get_landing_alt(); }
 
 	// RTL
-	bool		mission_landing_required() { return _rtl.rtl_type() == RTL::RTL_LAND; }
-	int			rtl_type() { return _rtl.rtl_type(); }
+	bool		mission_landing_required() { return _rtl.get_rtl_type() == RTL::RTL_TYPE_MISSION_LANDING; }
 	bool		in_rtl_state() const { return _vstatus.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_RTL; }
 
 	bool		abort_landing();
@@ -301,6 +299,7 @@ public:
 	bool		get_takeoff_required() const { return _param_mis_takeoff_req.get(); }
 	float		get_yaw_timeout() const { return _param_mis_yaw_tmt.get(); }
 	float		get_yaw_threshold() const { return math::radians(_param_mis_yaw_err.get()); }
+	float		get_lndmc_alt_max() const { return _param_lndmc_alt_max.get(); }
 
 	float		get_vtol_back_trans_deceleration() const { return _param_back_trans_dec_mss; }
 	float		get_vtol_reverse_delay() const { return _param_reverse_delay; }
@@ -331,7 +330,10 @@ private:
 		(ParamFloat<px4::params::MIS_TAKEOFF_ALT>) _param_mis_takeoff_alt,
 		(ParamBool<px4::params::MIS_TAKEOFF_REQ>) _param_mis_takeoff_req,
 		(ParamFloat<px4::params::MIS_YAW_TMT>) _param_mis_yaw_tmt,
-		(ParamFloat<px4::params::MIS_YAW_ERR>) _param_mis_yaw_err
+		(ParamFloat<px4::params::MIS_YAW_ERR>) _param_mis_yaw_err,
+
+		(ParamFloat<px4::params::LNDMC_ALT_MAX>)    _param_lndmc_alt_max
+
 	)
 
 	struct traffic_buffer_s {
@@ -403,7 +405,6 @@ private:
 	PrecLand	_precland;			/**< class for handling precision land commands */
 	RTL 		_rtl;				/**< class that handles RTL */
 	EngineFailure	_engineFailure;			/**< class that handles the engine failure mode (FW only!) */
-	GpsFailure	_gpsFailure;			/**< class that handles the OBC gpsfailure loss mode */
 	FollowTarget	_follow_target;
 
 	NavigatorMode *_navigation_mode_array[NAVIGATOR_MODE_ARRAY_SIZE];	/**< array of navigation modes */
